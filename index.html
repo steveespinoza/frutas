@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clasificador de Frutas</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    #resultado {
+      font-weight: bold;
+      font-size: 3rem;
+      text-align: center;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="px-4 py-2 text-center border-bottom">
+      <h1 class="display-5 fw-bold">Clasificador de Frutas</h1>
+      <p class="lead">Detecta si es una manzana, banana, naranja o mezcla usando la cámara.</p>
+    </div>
+
+    <div class="container mt-5">
+      <div class="row">
+        <div class="col-12 col-md-4 offset-md-4 text-center">
+          <video id="video" playsinline autoplay width="1" height="1"></video>
+          <button class="btn btn-primary mb-2" onclick="cambiarCamara();">Cambiar cámara</button>
+          <canvas id="canvas" width="400" height="400"></canvas>
+          <canvas id="inputCanvas" width="50" height="50" style="display: none;"></canvas>
+          <div id="resultado">Cargando modelo...</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const inputCanvas = document.getElementById("inputCanvas");
+    const ctx = canvas.getContext("2d");
+    const ctxInput = inputCanvas.getContext("2d");
+    const labels = ['apple', 'banana', 'mixed', 'orange'];
+    let modelo = null;
+    let currentStream = null;
+    let facingMode = "user";
+
+    async function cargarModelo() {
+      modelo = await tf.loadGraphModel('model.json');
+      document.getElementById("resultado").innerText = "Modelo cargado. Esperando predicción...";
+    }
+
+    async function mostrarCamara() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+
+      const constraints = {
+        video: { width: 400, height: 400, facingMode: facingMode }
+      };
+
+      currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = currentStream;
+      video.onloadedmetadata = () => {
+        video.play();
+        procesarCamara();
+        predecir();
+      };
+    }
+
+    function cambiarCamara() {
+      facingMode = (facingMode === "user") ? "environment" : "user";
+      mostrarCamara();
+    }
+
+    function procesarCamara() {
+      ctx.drawImage(video, 0, 0, 400, 400);
+      setTimeout(procesarCamara, 100);
+    }
+
+    function predecir() {
+      if (modelo) {
+        ctxInput.drawImage(video, 0, 0, 50, 50);
+        const imageData = ctxInput.getImageData(0, 0, 50, 50);
+        const input = tf.browser.fromPixels(imageData).toFloat().div(255).expandDims();
+
+        const prediction = modelo.predict(input);
+        prediction.array().then(prob => {
+          const index = tf.argMax(prediction, 1).dataSync()[0];
+          const label = labels[index];
+          const confidence = (prob[0][index] * 100).toFixed(2);
+          document.getElementById("resultado").innerText = `${label} (${confidence}%)`;
+        });
+      }
+
+      setTimeout(predecir, 500);
+    }
+
+    window.onload = async () => {
+      await cargarModelo();
+      await mostrarCamara();
+    };
+  </script>
+</body>
+</html>
